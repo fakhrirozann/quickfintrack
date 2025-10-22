@@ -1,19 +1,20 @@
 <!DOCTYPE html>
-<html lang="id">
+<html lang="id" data-theme="light">
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1.0,viewport-fit=cover" />
   <title>QuickLog</title>
-  <base href="/quickfintrack/" />
+
+  <base href="./" />
   <link rel="stylesheet" href="style.css" />
   <link rel="manifest" href="manifest.json" />
-<script>
-  if ('serviceWorker' in navigator) {
-    navigator.serviceWorker.register('./service-worker.js');
-  }
-</script>
-
+  <script>
+    if ('serviceWorker' in navigator) {
+      navigator.serviceWorker.register('./service-worker.js');
+    }
+  </script>
 </head>
+
 <body>
   <main class="app">
     <header class="app-header">
@@ -21,82 +22,168 @@
     </header>
 
     <section id="content" class="content">
-      <!-- Quick Log view (wizard) -->
-      <div id="quick-view" class="view active">
+      <!-- ===============================
+           🧾 INPUT / WIZARD VIEW
+           =============================== -->
+      <div id="quick-view" class="view active" data-view="quick">
         <div class="card">
           <div class="field-area">
-            <!-- Each field group shown one at a time -->
+
+            <!-- Step: Amount -->
             <div class="step" data-step="amount">
               <label class="label">Nominal</label>
-              <input id="amount" inputmode="numeric" type="number" placeholder="Contoh: 25000" autocomplete="off" />
-              <div class="hint">Ketik jumlah lalu tekan Enter</div>
+              <div class="input-wrapper">
+                <input id="amount" inputmode="numeric" type="number" placeholder="Contoh: 25000" autocomplete="off" />
+                <button class="clear-btn" type="button">×</button>
+              </div>
+              <div class="hint">Ketik jumlah (Hanya Angka) lalu tekan Enter</div>
             </div>
 
+            <!-- Step: Item -->
             <div class="step" data-step="item">
               <label class="label">Item (wajib)</label>
-              <input id="item" type="text" placeholder="Contoh: Soto ayam" autocomplete="off" />
+              <div class="input-wrapper">
+                <input id="item" type="text" placeholder="Contoh: Soto ayam" autocomplete="off" />
+                <button class="clear-btn" type="button">×</button>
+              </div>
               <div class="hint">Nama barang atau transaksi</div>
             </div>
 
+            <!-- Step: Category -->
             <div class="step" data-step="category">
               <label class="label">Kategori (wajib)</label>
-              <!-- editable dropdown using datalist -->
-              <input id="category" list="category-list" type="text" placeholder="Pilih atau ketik kategori baru" autocomplete="off" />
-              <datalist id="category-list"></datalist>
+              <div class="input-wrapper">
+                <input id="category" list="category-list" type="text" placeholder="Pilih atau ketik kategori baru" autocomplete="off" />
+                <datalist id="category-list"></datalist>
+                <button class="clear-btn" type="button">×</button>
+              </div>
               <div class="hint">Kategori akan otomatis tersimpan jika baru</div>
             </div>
 
+            <!-- Step: DateTime -->
             <div class="step" data-step="datetime">
               <label class="label">Tanggal & Waktu</label>
               <input id="datetime" type="datetime-local" />
               <div class="hint">Default: sekarang (bisa diubah)</div>
             </div>
 
+            <!-- Step: Location (opsional) -->
             <div class="step" data-step="location">
               <label class="label">Lokasi (opsional)</label>
-              <input id="location" type="text" placeholder="Boleh kosong atau tekan 'Gunakan Lokasi'" autocomplete="off" />
+              <div class="input-wrapper">
+                <input id="location" type="text" placeholder="Boleh kosong atau tekan 'Gunakan Lokasi'" autocomplete="off" />
+                <button class="clear-btn" type="button">×</button>
+              </div>
               <div class="row" style="gap:8px;margin-top:10px;">
                 <button id="get-location" type="button" class="btn small">Gunakan Lokasi</button>
-                <button id="skip-location" type="button" class="btn small ghost">Lewati</button>
               </div>
               <div class="hint">Lokasi tidak wajib</div>
             </div>
 
+            <!-- Step: Done -->
             <div class="step" data-step="done">
               <div class="done-box">
                 <div class="done-text">Semua data siap disimpan</div>
-                <button id="save-btn" class="btn">Simpan</button>
+                <div class="row" style="display:flex;justify-content:center;gap:10px;">
+                  <button id="back-btn" class="btn ghost small">← Kembali</button>
+                  <button id="save-btn" class="btn small">Simpan</button>
+                </div>
               </div>
             </div>
+
+          </div>
+
+          <!-- Wizard navigation (auto-hide on first & last step) -->
+          <div class="wizard-nav">
+            <button id="prev-btn" class="btn ghost small">← Kembali</button>
+            <div id="step-indicator" class="step-indicator">Step 1 dari 5</div>
+            <button id="next-btn" class="btn small inactive">Lanjutkan →</button>
           </div>
         </div>
 
-        <!-- kecil feedback -->
-        <div id="toast" class="toast">✅ Disimpan</div>
+        <!-- Toast & overlay feedback -->
+        <div id="toast" class="toast">✅ Transaksi tersimpan!</div>
+        <div id="overlay-success" class="overlay-success">✅ Transaksi tersimpan!</div>
       </div>
 
-      <!-- Log view -->
-      <div id="log-view" class="view">
+      <!-- ===============================
+           📋 LOG VIEW
+           =============================== -->
+      <div id="log-view" class="view" data-view="log">
+        <div class="card">
+          <h3 class="card-title">Ringkasan</h3>
+          <div id="summary-text" class="summary-text">
+            💰 Total pengeluaran hari ini: Rp 0
+          </div>
+        </div>
+
         <div class="log-actions">
-          <button id="download-csv" class="btn">Download CSV</button>
-          <button id="clear-all" class="btn ghost">Hapus Semua</button>
+          <div class="hint muted">Riwayat transaksi Anda</div>
         </div>
 
         <div id="log-list" class="log-list"></div>
 
-        <div class="empty" id="empty-log">Belum ada transaksi.</div>
+        <div class="empty" id="empty-log">
+          Belum ada transaksi.
+          <button id="cta-add-log" class="btn small">+ Catat Sekarang</button>
+        </div>
+      </div>
+
+      <!-- ===============================
+           ⚙️ SETTINGS VIEW
+           =============================== -->
+      <div id="settings-view" class="view" data-view="settings">
+        <div class="card">
+          <h3 class="card-title">Data</h3>
+          <button id="download-csv" class="btn full">⬇️ Download CSV</button>
+          <button id="clear-all" class="btn ghost full">🗑️ Hapus Semua</button>
+        </div>
+
+        <div class="card">
+          <h3 class="card-title">Tema</h3>
+
+          <div class="setting-item">
+            <span>Mode Otomatis</span>
+            <label class="switch">
+              <input type="checkbox" id="theme-auto" checked />
+              <span class="slider"></span>
+            </label>
+          </div>
+
+          <div class="setting-item">
+            <span>Ikuti</span>
+            <select id="theme-auto-type">
+              <option value="device">Perangkat</option>
+              <option value="time">Waktu Lokal</option>
+            </select>
+          </div>
+
+          <div class="setting-item">
+            <div class="setting-label">
+              <span>Tema Manual</span>
+              <small id="theme-manual-hint" class="hint muted">Nonaktif saat mode otomatis aktif.</small>
+            </div>
+            <label class="switch">
+              <input type="checkbox" id="theme-manual" />
+              <span class="slider"></span>
+            </label>
+          </div>
+        </div>
       </div>
     </section>
 
-    <!-- bottom nav -->
+    <!-- ===============================
+         🧭 BOTTOM NAVIGATION
+         =============================== -->
     <nav class="bottom-nav">
-      <button id="nav-quick" class="nav-btn active">
-        <span>📝</span>
-        <small>Quick Log</small>
+      <button class="nav-btn active" data-view-target="quick">
+        📝 <small>Catat</small>
       </button>
-      <button id="nav-log" class="nav-btn">
-        <span>📋</span>
-        <small>Log</small>
+      <button class="nav-btn" data-view-target="log">
+        📋 <small>Riwayat</small>
+      </button>
+      <button class="nav-btn" data-view-target="settings">
+        ⚙️ <small>Opsi</small>
       </button>
     </nav>
   </main>

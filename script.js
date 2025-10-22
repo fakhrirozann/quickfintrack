@@ -1,381 +1,629 @@
-// ============================
-// QuickLog - script.js (final)
-// ============================
-
-// DOM
-const steps = Array.from(document.querySelectorAll(".step"));
-const inputAmount = document.getElementById("amount");
-const inputItem = document.getElementById("item");
-const inputCategory = document.getElementById("category");
-const datalistCategory = document.getElementById("category-list");
-const inputDatetime = document.getElementById("datetime");
-const inputLocation = document.getElementById("location");
-const getLocationBtn = document.getElementById("get-location");
-const skipLocationBtn = document.getElementById("skip-location");
-const saveBtn = document.getElementById("save-btn");
-const toast = document.getElementById("toast");
-
-const logList = document.getElementById("log-list");
-const emptyLog = document.getElementById("empty-log");
-const downloadCsvBtn = document.getElementById("download-csv");
-const clearAllBtn = document.getElementById("clear-all");
-
-const navQuick = document.getElementById("nav-quick");
-const navLog = document.getElementById("nav-log");
-const quickView = document.getElementById("quick-view");
-const logView = document.getElementById("log-view");
-const pageTitle = document.getElementById("page-title");
-
-// state
-let currentStep = 0;
-let tempData = {
-  amount: "",
-  item: "",
-  category: "",
-  datetime: "",
-  location: ""
+/* script.js (v2.1)
+   App namespace modular approach
+*/
+const App = {
+  state: {
+    currentStep: 0,
+    steps: [],
+  },
+  data: {
+    logs: [],
+    categories: new Set(),
+  },
 };
 
-// --- init ---
-document.addEventListener("DOMContentLoaded", () => {
-  setDefaultDatetime();
-  loadCategories();
-  loadLogs();
-  showStep(0);
-});
+/* ---------------------------
+   CORE DATA + STORAGE
+   --------------------------- */
+App.Core = {
+  load() {
+    const saved = localStorage.getItem("logs");
+    if (saved) App.data.logs = JSON.parse(saved);
+    const savedCats = localStorage.getItem("categories");
+    if (savedCats) App.data.categories = new Set(JSON.parse(savedCats));
+  },
 
+  persist() {
+    localStorage.setItem("logs", JSON.stringify(App.data.logs));
+    localStorage.setItem("categories", JSON.stringify([...App.data.categories]));
+  },
 
-// --- Step UI helpers ---
-function showStep(index) {
-  steps.forEach((s, i) => {
-    if (i === index) s.classList.add("active");
-    else s.classList.remove("active");
-  });
-  currentStep = index;
-  const active = steps[index];
-  const input = active && active.querySelector("input");
-  if (input) {
-    // focus but give mobile a tiny delay so keyboard shows reliably
-    setTimeout(() => {
-      try { input.focus({ preventScroll: true }); } catch(e){ input.focus(); }
-    }, 100);
-    // set correct inputmode for amount
-    if (active.dataset.step === "amount") input.setAttribute("inputmode","numeric");
-    else input.removeAttribute("inputmode");
-  }
-}
+  addLog(entry) {
+    App.data.logs.push(entry);
+    App.Core.persist();
+    App.UI.renderLogs();
+    App.UI.updateSummary();
+    App.UI.updateCategoryList();
+  },
 
-// press Enter on inputs -> nextStep (except done)
-document.querySelectorAll(".step input").forEach(inp => {
-  inp.addEventListener("keydown", (e) => {
-    if (e.key === "Enter") {
-      e.preventDefault();
-      // If current step is last (done), ignore (user should press Save)
-      if (currentStep < steps.length - 1) nextStep();
-    }
-  });
-});
+  removeLog(index) {
+    App.data.logs.splice(index, 1);
+    App.Core.persist();
+    App.UI.renderLogs();
+    App.UI.updateSummary();
+  },
 
-// move to next step with validation
-function nextStep() {
-  const stepEl = steps[currentStep];
-  const id = stepEl.dataset.step;
-  const input = stepEl.querySelector("input");
+  clearAll() {
+    if (!confirm("Yakin ingin menghapus semua data?")) return;
+    App.data.logs = [];
+    App.Core.persist();
+    App.UI.renderLogs();
+    App.UI.updateSummary();
+  },
 
-  // validation: required fields (amount, item, category)
-  if (["amount","item","category"].includes(id)) {
-    if (!input || input.value.trim() === "") {
-      // simple shake or focus
-      input.focus();
-      return;
-    }
-  }
-
-  // store value
-  if (input) tempData[id] = input.value.trim();
-
-  // advance
-  if (currentStep < steps.length - 1) {
-    showStep(currentStep + 1);
-  }
-  
-}
-
-// --- Default datetime ---
-function setDefaultDatetime() {
-  const now = new Date();
-  // convert to local ISO for datetime-local input
-  const local = new Date(now.getTime() - now.getTimezoneOffset() * 60000).toISOString().slice(0,16);
-  inputDatetime.value = local;
-  tempData.datetime = inputDatetime.value;
-}
-
-// --- Location buttons ---
-getLocationBtn.addEventListener("click", () => {
-  if (!navigator.geolocation) {
-    alert("Browser tidak mendukung geolocation.");
-    return;
-  }
-  getLocationBtn.disabled = true;
-  getLocationBtn.textContent = "Mencari...";
-  navigator.geolocation.getCurrentPosition(pos => {
-    const lat = pos.coords.latitude.toFixed(4);
-    const lng = pos.coords.longitude.toFixed(4);
-    inputLocation.value = `${lat}, ${lng}`;
-    getLocationBtn.disabled = false;
-    getLocationBtn.textContent = "Gunakan Lokasi";
-  }, err => {
-    alert("Gagal mendapat lokasi.");
-    getLocationBtn.disabled = false;
-    getLocationBtn.textContent = "Gunakan Lokasi";
-  }, { timeout: 8000 });
-});
-
-skipLocationBtn.addEventListener("click", () => {
-  inputLocation.value = "";
-  nextStep();
-});
-
-// --- Save ---
-saveBtn.addEventListener("click", saveTransaction);
-
-function saveTransaction() {
-  // collect fields (ensure latest)
-  tempData.amount = inputAmount.value.trim();
-  tempData.item = inputItem.value.trim();
-  tempData.category = inputCategory.value.trim();
-  tempData.datetime = inputDatetime.value.trim();
-  tempData.location = inputLocation.value.trim();
-
-  if (!tempData.amount || !tempData.item || !tempData.category) {
-    alert("Mohon isi Nominal, Item, dan Kategori.");
-    // go to the first empty required field
-    if (!tempData.amount) showStep(0);
-    else if (!tempData.item) showStep(1);
-    else if (!tempData.category) showStep(2);
-    return;
-  }
-
-  const logs = getLogs();
-  const newLog = {
-    id: Date.now(),
-    amount: Number(tempData.amount),
-    item: tempData.item,
-    category: tempData.category,
-    datetime: tempData.datetime || new Date().toISOString(),
-    location: tempData.location || ""
-  };
-  logs.push(newLog);
-  localStorage.setItem("logs", JSON.stringify(logs));
-
-  // categories: add if new (case-insensitive)
-  addCategory(newLog.category);
-
-  // reset for next input
-  clearInputs();
-  showToast("✅ Disimpan");
-  loadLogs();
-  showStep(0);
-}
-
-function clearInputs() {
-  inputAmount.value = "";
-  inputItem.value = "";
-  inputCategory.value = "";
-  setDefaultDatetime();
-  inputLocation.value = "";
-  tempData = { amount:"", item:"", category:"", datetime:"", location:"" };
-}
-
-// --- Toast ---
-let toastTimer = null;
-function showToast(msg) {
-  toast.textContent = msg;
-  toast.style.display = "block";
-  toast.classList.add("show");
-  if (toastTimer) clearTimeout(toastTimer);
-  toastTimer = setTimeout(() => {
-    toast.classList.remove("show");
-    toast.style.display = "";
-  }, 1600);
-}
-
-// --- LocalStorage helpers ---
-function getLogs() {
-  return JSON.parse(localStorage.getItem("logs") || "[]");
-}
-
-// load logs into UI
-function loadLogs() {
-  const logs = getLogs().sort((a,b) => b.id - a.id);
-  logList.innerHTML = "";
-  if (logs.length === 0) {
-    emptyLog.style.display = "block";
-    return;
-  }
-  emptyLog.style.display = "none";
-
-  logs.forEach(l => {
-    const item = document.createElement("div");
-    item.className = "log-item";
-    item.dataset.id = l.id;
-
-    item.innerHTML = `
-      <div class="log-left">
-        <div class="log-amt">Rp ${Number(l.amount).toLocaleString("id-ID")}</div>
-        <div class="log-meta">${escapeHtml(l.item)} • ${escapeHtml(l.category)} • ${formatDate(l.datetime)}</div>
-      </div>
-      <div style="display:flex;align-items:center;gap:8px;">
-        ${l.location ? `<div class="log-meta" style="font-size:12px">${escapeHtml(l.location)}</div>` : ""}
-        <button class="delete-btn" data-id="${l.id}">Hapus</button>
-      </div>
-    `;
-    // add touch events for swipe-to-delete (simple)
-    addSwipeToDelete(item, l.id);
-    logList.appendChild(item);
-  });
-
-  // bind delete buttons
-  document.querySelectorAll(".delete-btn").forEach(btn => {
-    btn.addEventListener("click", (e) => {
-      const id = e.currentTarget.dataset.id;
-      if (confirm("Hapus transaksi ini?")) {
-        deleteLog(id);
-      }
+  downloadCSV() {
+    const rows = [["Nominal", "Item", "Kategori", "Tanggal", "Lokasi"]];
+    App.data.logs.forEach((log) => {
+      rows.push([log.amount, log.item, log.category, log.datetime, log.location || ""]);
     });
-  });
-}
+    const csv = rows.map((r) => r.map((c) => `"${String(c).replace(/"/g, '""')}"`).join(",")).join("\n");
+    const blob = new Blob([csv], { type: "text/csv" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = "QuickLog.csv";
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    URL.revokeObjectURL(url);
+  },
+};
 
-function deleteLog(id) {
-  let logs = getLogs();
-  logs = logs.filter(x => String(x.id) !== String(id));
-  localStorage.setItem("logs", JSON.stringify(logs));
-  loadLogs();
-}
+/* ---------------------------
+   UI MODULE
+   --------------------------- */
+App.UI = {
+  init() {
+    // Steps
+    App.state.steps = Array.from(document.querySelectorAll(".step"));
+    // Wire controls
+    this.prevBtn = document.getElementById("prev-btn");
+    this.nextBtn = document.getElementById("next-btn");
+    this.saveBtn = document.getElementById("save-btn");
+    this.backBtn = document.getElementById("back-btn");
+    this.getLocBtn = document.getElementById("get-location");
+    this.toast = document.getElementById("toast");
+    this.overlay = document.getElementById("overlay-success");
+    this.logList = document.getElementById("log-list");
+    this.emptyLog = document.getElementById("empty-log");
+    this.summaryText = document.getElementById("summary-text");
+    this.ctaAddLog = document.getElementById("cta-add-log");
 
-// clear all
-clearAllBtn.addEventListener("click", () => {
-  if (confirm("Hapus semua catatan?")) {
-    localStorage.removeItem("logs");
-    loadLogs();
-  }
-});
+    // Inputs
+    this.inputs = {
+      amount: document.getElementById("amount"),
+      item: document.getElementById("item"),
+      category: document.getElementById("category"),
+      datetime: document.getElementById("datetime"),
+      location: document.getElementById("location"),
+    };
 
-// --- Categories ---
-function loadCategories() {
-  const cats = JSON.parse(localStorage.getItem("categories") || "[]");
-  datalistCategory.innerHTML = "";
-  cats.forEach(c => {
-    const opt = document.createElement("option");
-    opt.value = c;
-    datalistCategory.appendChild(opt);
-  });
-}
+    // Clear buttons (delegated via wrapper)
+    document.querySelectorAll(".input-wrapper").forEach((wrap) => {
+      const input = wrap.querySelector("input");
+      const clearBtn = wrap.querySelector(".clear-btn");
+      if (!clearBtn || !input) return;
+      // initial visibility
+      clearBtn.style.display = input.value && input.value.trim() !== "" ? "block" : "none";
+      // input -> toggle clear btn
+      input.addEventListener("input", () => {
+        clearBtn.style.display = input.value && input.value.trim() !== "" ? "block" : "none";
+        App.UI.updateNextButton();
+      });
+      // click clear
+      clearBtn.addEventListener("click", () => {
+        input.value = "";
+        input.dispatchEvent(new Event("input", { bubbles: true }));
+        input.focus();
+      });
+    });
 
-// add category (avoid duplicates, case-insensitive)
-function addCategory(cat) {
-  if (!cat) return;
-  const cats = JSON.parse(localStorage.getItem("categories") || "[]");
-  const exists = cats.some(c => c.toLowerCase() === cat.toLowerCase());
-  if (!exists) {
-    cats.push(cat);
-    localStorage.setItem("categories", JSON.stringify(cats));
-    loadCategories();
-  }
-}
+    // Prev / Next
+    this.prevBtn.addEventListener("click", () => App.UI.prevStep());
+    this.nextBtn.addEventListener("click", () => App.UI.handleNextClick());
 
-// if user types new category and presses Enter on category field, we should add it
-inputCategory.addEventListener("blur", () => {
-  const v = inputCategory.value.trim();
-  if (v) addCategory(v);
-});
+    // Save & Back inside done step
+    this.saveBtn.addEventListener("click", () => App.UI.saveCurrent());
+    this.backBtn.addEventListener("click", () => App.UI.prevStep());
 
-// --- CSV Export ---
-downloadCsvBtn.addEventListener("click", () => {
-  const logs = getLogs();
-  if (!logs || logs.length === 0) {
-    alert("Belum ada data untuk diunduh.");
-    return;
-  }
-  const header = ["Tanggal & Waktu","Item","Kategori","Nominal","Lokasi"];
-  const rows = logs.map(l => [
-    formatDate(l.datetime),
-    l.item.replace(/"/g,'""'),
-    l.category.replace(/"/g,'""'),
-    l.amount,
-    (l.location || "").replace(/"/g,'""')
-  ]);
-  // build CSV
-  const csv = [header.map(h => `"${h}"`).join(","),
-               ...rows.map(r => r.map(cell => `"${cell}"`).join(","))].join("\n");
-  const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
-  const link = document.createElement("a");
-  link.href = URL.createObjectURL(blob);
-  link.download = `quicklog-${new Date().toISOString().slice(0,10)}.csv`;
-  document.body.appendChild(link);
-  link.click();
-  link.remove();
-});
+    // Location button
+    if (this.getLocBtn) this.getLocBtn.addEventListener("click", () => App.UI.getLocation());
 
-// --- Navigation (bottom nav) ---
-navQuick.addEventListener("click", () => {
-  quickView.classList.add("active");
-  logView.classList.remove("active");
-  navQuick.classList.add("active");
-  navLog.classList.remove("active");
-  pageTitle.textContent = "Quick Log";
-});
+    // Log actions (delete)
+    this.logList.addEventListener("click", (e) => {
+      const btn = e.target.closest(".delete-btn");
+      if (!btn) return;
+      const idx = Number(btn.dataset.index);
+      if (!Number.isNaN(idx)) App.Core.removeLog(idx);
+    });
 
-navLog.addEventListener("click", () => {
-  quickView.classList.remove("active");
-  logView.classList.add("active");
-  navQuick.classList.remove("active");
-  navLog.classList.add("active");
-  pageTitle.textContent = "Log";
-});
+    // Clear all & download csv in settings
+    const clearAllBtn = document.getElementById("clear-all");
+    if (clearAllBtn) clearAllBtn.addEventListener("click", () => App.Core.clearAll());
+    const downloadBtn = document.getElementById("download-csv");
+    if (downloadBtn) downloadBtn.addEventListener("click", () => App.Core.downloadCSV());
 
-// --- Utils ---
-function formatDate(dt) {
-  const d = new Date(dt);
-  if (isNaN(d)) return dt || "";
-  return d.toLocaleString("id-ID", { dateStyle: "medium", timeStyle: "short" });
-}
+    // Bottom nav
+    document.querySelectorAll(".nav-btn").forEach((b) => b.addEventListener("click", App.UI.switchView));
 
-function escapeHtml(s){
-  return (s||"").replace(/[&<>"']/g, function(m){ return ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":"&#39;"})[m]; });
-}
+    // CTA in empty state
+    if (this.ctaAddLog) this.ctaAddLog.addEventListener("click", () => {
+      App.UI.switchToView("quick");
+      setTimeout(() => this.inputs.amount.focus(), 120);
+    });
 
-// --- Swipe to delete (simple mobile detection) ---
-function addSwipeToDelete(el, id) {
-  let startX = 0;
-  let moved = false;
+    // Inputs: Enter key to go next (or save if last)
+    Object.values(this.inputs).forEach((inp) => {
+      if (!inp) return;
+      inp.addEventListener("keydown", (ev) => {
+        if (ev.key === "Enter") {
+          ev.preventDefault();
+          // update UI state then move
+          App.UI.updateNextButton();
+          // If on last step (done) and save is present, trigger save
+          if (App.state.currentStep === App.state.steps.length - 1) {
+            App.UI.saveCurrent();
+          } else {
+            App.UI.handleNextClick();
+          }
+        }
+      });
+    });
 
-  el.addEventListener("touchstart", (e) => {
-    startX = e.touches[0].clientX;
-    moved = false;
-  }, { passive: true });
+    // Theme controls handled by App.Theme (init later)
+    App.Theme.init();
 
-  el.addEventListener("touchmove", (e) => {
-    const x = e.touches[0].clientX;
-    const dx = x - startX;
-    if (dx < -20) {
-      // move visually a bit
-      el.style.transform = `translateX(${dx}px)`;
-      moved = true;
+    // Initial render
+    this.showStep(0);
+    this.renderLogs();
+    this.updateSummary();
+    this.updateCategoryList();
+    this.updateNextButton(); // ensure button state reflects first input
+  },
+
+  // Show specific step index
+  showStep(index) {
+    const len = App.state.steps.length;
+    if (index < 0) index = 0;
+    if (index > len - 1) index = len - 1;
+    App.state.currentStep = index;
+
+  // Auto-fill datetime field if empty
+  if (App.state.steps[index].dataset.step === "datetime") {
+    const dt = App.UI.inputs.datetime;
+    if (dt && !dt.value) {
+      const now = new Date();
+      const localISO = new Date(now.getTime() - now.getTimezoneOffset() * 60000)
+        .toISOString()
+        .slice(0, 16);
+      dt.value = localISO;
     }
-  }, { passive: true });
+  }
 
-  el.addEventListener("touchend", (e) => {
-    if (!moved) {
-      el.style.transform = "";
+    App.state.steps.forEach((s, i) => {
+      s.classList.toggle("active", i === index);
+    });
+
+    // Prev visibility: hide in first step
+    this.prevBtn.style.visibility = index === 0 ? "hidden" : "visible";
+
+    // Wizard nav visibility: hide when last (done)
+    const wizardNav = document.querySelector(".wizard-nav");
+    if (index === len - 1) {
+      wizardNav.style.display = "none";
+    } else {
+      wizardNav.style.display = "flex";
+    }
+
+    // Update next button state/text depending on step type
+    this.updateNextButton();
+
+    // update step indicator text
+    const indicator = document.getElementById("step-indicator");
+    if (indicator) indicator.textContent = `Step ${index + 1} dari ${len}`;
+  
+    // Auto focus first input in this step (if any)
+    const firstInput = App.state.steps[index].querySelector("input");
+    if (firstInput) {
+      setTimeout(() => firstInput.focus(), 120);
+    }
+  },
+
+  // Determine if a step is required (amount,item,category,datetime are required)
+  stepIsRequired(stepEl) {
+    const name = stepEl.dataset.step;
+    return ["amount", "item", "category", "datetime"].includes(name);
+  },
+
+  // Update next button label and disabled state based on current step & input
+  updateNextButton() {
+    const idx = App.state.currentStep;
+    const stepEl = App.state.steps[idx];
+    if (!stepEl) return;
+    const name = stepEl.dataset.step;
+    const nextBtn = this.nextBtn;
+
+    // find input (if any)
+    const input = stepEl.querySelector("input");
+
+    if (name === "location") {
+      // optional
+      const hasValue = input && input.value.trim() !== "";
+      nextBtn.textContent = hasValue ? "Lanjutkan →" : "Lewati →";
+      nextBtn.classList.toggle("inactive", false);
+      nextBtn.disabled = false;
+    } else {
+      // required steps
+      nextBtn.textContent = "Lanjutkan →";
+      const filled = input && input.value.toString().trim() !== "";
+      // For numeric inputs treat zero or NaN as empty
+      if (input && input.type === "number") {
+        const val = parseFloat(input.value);
+        if (isNaN(val) || val <= 0) {
+          nextBtn.classList.add("inactive");
+          nextBtn.disabled = true;
+          return;
+        }
+      }
+      if (!filled) {
+        nextBtn.classList.add("inactive");
+        nextBtn.disabled = true;
+      } else {
+        nextBtn.classList.remove("inactive");
+        nextBtn.disabled = false;
+      }
+    }
+  },
+
+  handleNextClick() {
+    const idx = App.state.currentStep;
+    const stepEl = App.state.steps[idx];
+    if (!stepEl) return;
+
+    const name = stepEl.dataset.step;
+    const input = stepEl.querySelector("input");
+
+    if (name === "location") {
+      // optional: always allow next (Lewati or Lanjutkan)
+      this.nextStep();
       return;
     }
-    const endX = e.changedTouches[0].clientX;
-    const dx = endX - startX;
-    el.style.transform = "";
-    // if swipe left far enough, trigger delete confirm
-    if (dx < -80) {
-      if (confirm("Hapus transaksi ini?")) deleteLog(id);
+
+    // required steps: check validation
+    if (input) {
+      if (input.type === "number") {
+        const val = parseFloat(input.value);
+        if (isNaN(val) || val <= 0) {
+          // keep disabled — give light animation / focus
+          input.classList.add("error");
+          setTimeout(() => input.classList.remove("error"), 800);
+          return;
+        }
+      }
+      if (input.value.toString().trim() === "") {
+        input.classList.add("error");
+        setTimeout(() => input.classList.remove("error"), 800);
+        return;
+      }
+    }
+    // all good
+    this.nextStep();
+  },
+
+  nextStep() {
+    this.showStep(App.state.currentStep + 1);
+  },
+
+  prevStep() {
+    if (App.state.currentStep === 0) return;
+    this.showStep(App.state.currentStep - 1);
+  },
+
+  // Save current wizard values (validate final)
+saveCurrent() {
+  const amountVal = parseFloat(this.inputs.amount.value);
+  const itemVal = this.inputs.item.value.trim();
+  const categoryVal = this.inputs.category.value.trim();
+  const datetimeVal = this.inputs.datetime.value || new Date().toISOString();
+  const locationVal = this.inputs.location.value.trim();
+
+  // --- Validation
+  if (isNaN(amountVal) || amountVal <= 0) {
+    this.showToast("⚠️ Masukkan nominal yang valid");
+    this.inputs.amount.classList.add("error");
+    setTimeout(() => this.inputs.amount.classList.remove("error"), 900);
+    this.showStep(0);
+    return;
+  }
+  if (!itemVal) {
+    this.showToast("⚠️ Isi nama item");
+    this.inputs.item.classList.add("error");
+    setTimeout(() => this.inputs.item.classList.remove("error"), 900);
+    this.showStep(1);
+    return;
+  }
+  if (!categoryVal) {
+    this.showToast("⚠️ Pilih atau ketik kategori");
+    this.inputs.category.classList.add("error");
+    setTimeout(() => this.inputs.category.classList.remove("error"), 900);
+    this.showStep(2);
+    return;
+  }
+  if (!datetimeVal) {
+    this.showToast("⚠️ Pilih tanggal & waktu");
+    this.inputs.datetime.classList.add("error");
+    setTimeout(() => this.inputs.datetime.classList.remove("error"), 900);
+    this.showStep(3);
+    return;
+  }
+
+  const entry = {
+    amount: amountVal,
+    item: itemVal,
+    category: categoryVal,
+    datetime: datetimeVal,
+    location: locationVal || "",
+  };
+
+  // --- Persist
+  App.data.categories.add(categoryVal);
+  App.Core.addLog(entry);
+
+  // --- Visual feedback
+  this.showOverlaySuccess();
+
+  // --- Reset input fields
+  Object.values(this.inputs).forEach((inp) => {
+    if (!inp) return;
+    inp.value = "";
+    const wrap = inp.closest(".input-wrapper");
+    if (wrap) {
+      const cb = wrap.querySelector(".clear-btn");
+      if (cb) cb.style.display = "none";
     }
   });
-}
+
+  // --- Force reset wizard back to step 0
+  setTimeout(() => {
+    // hard reset state
+    App.state.currentStep = 0;
+    App.state.steps.forEach((s, i) => s.classList.toggle("active", i === 0));
+
+    // show wizard navigation again
+    const wizardNav = document.querySelector(".wizard-nav");
+    if (wizardNav) wizardNav.style.display = "flex";
+
+    // hide “done” step completely
+    const doneStep = document.querySelector('[data-step="done"]');
+    if (doneStep) doneStep.classList.remove("active");
+
+    // ensure previous button hidden again
+    this.prevBtn.style.visibility = "hidden";
+
+    // update button state + focus
+    this.updateNextButton();
+    setTimeout(() => this.inputs.amount.focus(), 250);
+  }, 500);
+},
+
+
+
+  // show toast (text) short
+  showToast(msg) {
+    if (!this.toast) return;
+    this.toast.textContent = msg;
+    this.toast.style.display = "block";
+    this.toast.style.opacity = "1";
+    clearTimeout(this._toastTimer);
+    this._toastTimer = setTimeout(() => {
+      this.toast.style.opacity = "0";
+      setTimeout(() => (this.toast.style.display = "none"), 300);
+    }, 1400);
+  },
+
+  showOverlaySuccess() {
+    if (!this.overlay) return;
+    this.overlay.style.display = "flex";
+    this.overlay.style.opacity = "1";
+    // simple fade out after 900ms
+    clearTimeout(this._overlayTimer);
+    this._overlayTimer = setTimeout(() => {
+      this.overlay.style.transition = "opacity 0.95s";
+      this.overlay.style.opacity = "0";
+      setTimeout(() => (this.overlay.style.display = "none"), 550);
+    }, 1200);
+    // also show toast text
+    this.showToast("✅ Transaksi tersimpan!");
+  },
+
+  // Render logs
+  renderLogs() {
+    this.logList.innerHTML = "";
+    if (App.data.logs.length === 0) {
+      this.emptyLog.style.display = "block";
+      return;
+    }
+    this.emptyLog.style.display = "none";
+
+    App.data.logs.forEach((log, i) => {
+      const el = document.createElement("div");
+      el.className = "log-item";
+      const dateText = new Date(log.datetime).toLocaleString();
+      el.innerHTML = `
+        <div class="log-left">
+          <div class="log-amt">Rp${Number(log.amount).toLocaleString("id-ID")}</div>
+          <div class="log-meta">${log.item} — ${log.category}<br>${dateText}</div>
+        </div>
+        <button class="delete-btn" data-index="${i}">×</button>
+      `;
+      this.logList.appendChild(el);
+    });
+  },
+
+  updateSummary() {
+    // sum today's total (local timezone)
+    const today = new Date();
+    const startOfDay = new Date(today.getFullYear(), today.getMonth(), today.getDate());
+    const totalToday = App.data.logs.reduce((acc, l) => {
+      const d = new Date(l.datetime);
+      if (d >= startOfDay && d < new Date(startOfDay.getTime() + 24 * 3600 * 1000)) {
+        return acc + Number(l.amount || 0);
+      }
+      return acc;
+    }, 0);
+    this.summaryText.textContent = `💰 Total pengeluaran hari ini: Rp ${totalToday.toLocaleString("id-ID")}`;
+  },
+
+  updateCategoryList() {
+    const list = document.getElementById("category-list");
+    if (!list) return;
+    list.innerHTML = [...App.data.categories].map(c => `<option value="${c}"></option>`).join("");
+  },
+
+  getLocation() {
+    if (!navigator.geolocation) {
+      alert("Browser tidak mendukung lokasi otomatis.");
+      return;
+    }
+    navigator.geolocation.getCurrentPosition((pos) => {
+      const coords = `${pos.coords.latitude.toFixed(5)}, ${pos.coords.longitude.toFixed(5)}`;
+      if (this.inputs.location) {
+        this.inputs.location.value = coords;
+        // show clear btn
+        const wrap = this.inputs.location.closest(".input-wrapper");
+        if (wrap) {
+          const cb = wrap.querySelector(".clear-btn");
+          if (cb) cb.style.display = "block";
+        }
+        this.updateNextButton();
+      }
+    }, () => alert("Tidak dapat mengambil lokasi."));
+  },
+
+  // switch view by nav target string or element event
+  switchView(e) {
+    let target;
+    if (typeof e === "string") target = e;
+    else target = e.currentTarget.dataset.viewTarget;
+    document.querySelectorAll(".view").forEach(v => v.classList.remove("active"));
+    document.querySelectorAll(".nav-btn").forEach(b => b.classList.remove("active"));
+    const btn = Array.from(document.querySelectorAll(".nav-btn")).find(b => b.dataset.viewTarget === target);
+    if (btn) btn.classList.add("active");
+    const viewEl = document.getElementById(`${target}-view`);
+    if (viewEl) viewEl.classList.add("active");
+    // focus amount when switching to quick
+    if (target === "quick") setTimeout(() => this.inputs.amount && this.inputs.amount.focus(), 200);
+  },
+
+  switchToView(target) { this.switchView(target); }
+};
+
+/* ---------------------------
+   THEME MODULE
+   --------------------------- */
+App.Theme = {
+  init() {
+    const root = document.documentElement;
+    this.autoSwitch = document.getElementById("theme-auto");
+    this.autoType = document.getElementById("theme-auto-type");
+    this.manualSwitch = document.getElementById("theme-manual");
+    this.manualHint = document.getElementById("theme-manual-hint");
+
+    // load saved
+    const savedAuto = localStorage.getItem("theme-auto");
+    const savedMode = localStorage.getItem("theme-mode");
+
+    if (savedAuto === "false") this.autoSwitch.checked = false;
+    if (savedMode) root.dataset.theme = savedMode;
+
+    // utility
+    const detectAuto = () => {
+      if (!this.autoType) return (window.matchMedia && window.matchMedia("(prefers-color-scheme: dark)").matches) ? "dark" : "light";
+      if (this.autoType.value === "device") {
+        return (window.matchMedia && window.matchMedia("(prefers-color-scheme: dark)").matches) ? "dark" : "light";
+      } else {
+        const h = new Date().getHours();
+        return (h >= 18 || h < 6) ? "dark" : "light";
+      }
+    };
+
+    const apply = (mode) => {
+      root.dataset.theme = mode;
+      localStorage.setItem("theme-mode", mode);
+    };
+
+    const update = () => {
+      if (this.autoSwitch.checked) {
+        this.manualSwitch.disabled = true;
+        if (this.manualSwitch.closest) {
+          // apply visual disabled styling
+          const wrap = this.manualSwitch.closest(".setting-item");
+          if (wrap) wrap.style.opacity = "0.6";
+        }
+        localStorage.setItem("theme-auto", "true");
+        apply(detectAuto());
+        if (this.manualHint) this.manualHint.textContent = "Nonaktif saat mode otomatis aktif.";
+      } else {
+        this.manualSwitch.disabled = false;
+        const wrap = this.manualSwitch.closest(".setting-item");
+        if (wrap) wrap.style.opacity = "1";
+        localStorage.setItem("theme-auto", "false");
+        apply(this.manualSwitch.checked ? "dark" : "light");
+        if (this.manualHint) this.manualHint.textContent = "Aktif: pilih tema manual.";
+      }
+    };
+
+    // event listeners
+    if (this.autoSwitch) this.autoSwitch.addEventListener("change", update);
+    if (this.autoType) this.autoType.addEventListener("change", update);
+    if (this.manualSwitch) this.manualSwitch.addEventListener("change", update);
+
+    // initial update
+    update();
+
+    // also watch system changes if using device mode
+    if (window.matchMedia) {
+      const mq = window.matchMedia("(prefers-color-scheme: dark)");
+      mq.addEventListener && mq.addEventListener("change", () => {
+        if (this.autoSwitch.checked && this.autoType.value === "device") update();
+      });
+    }
+  }
+};
+
+// ==========================
+// Keyboard Shortcut Support
+// ==========================
+document.addEventListener("keydown", (e) => {
+  // Abaikan kalau sedang di input yang multi-line
+  if (e.target.tagName === "TEXTAREA") return;
+
+  // ENTER atau SPASI berfungsi sebagai "Lanjutkan" atau "Simpan"
+  if (e.key === "Enter" || e.key === " " || e.code === "Space") {
+    const activeEl = document.activeElement;
+    // Abaikan kalau lagi ngetik di input
+    if (activeEl.tagName === "INPUT" || activeEl.tagName === "TEXTAREA") return;
+
+    e.preventDefault();
+
+    const nextBtn = document.getElementById("next-btn");
+    const saveBtn = document.getElementById("save-btn");
+
+    // Kalau step masih input → klik next
+    if (nextBtn && nextBtn.offsetParent !== null && !nextBtn.disabled) {
+      nextBtn.click();
+    }
+    // Kalau sudah di step terakhir → klik simpan
+    else if (saveBtn && saveBtn.offsetParent !== null && !saveBtn.disabled) {
+      saveBtn.click();
+    }
+  }
+});
+
+/* ---------------------------
+   BOOT
+   --------------------------- */
+document.addEventListener("DOMContentLoaded", () => {
+  App.Core.load();
+  App.UI.init();
+});
