@@ -69,4 +69,57 @@ Core transaction features worked, but UI static and unoptimized.
 
 ---
 
+# 📦 Changelog  
+Setiap perubahan penting dalam proyek ini akan didokumentasikan di sini.  
+Format mengikuti [Keep a Changelog](https://keepachangelog.com/), dan versi mengikuti [Semantic Versioning](https://semver.org/).
+
+---
+
+🧾 Changelog – v2.2 (2025-10-22)
+Release Name: “Theme & Wizard Overhaul”
+
+✨ Added
+Multi-tab navigation (Catat, Riwayat, Opsi) dengan state aktif.
+“Opsi” tab berisi kontrol baru:
+Download CSV dan Hapus Semua (dipindahkan dari tab log).
+Dark/Light Mode Switch dengan tiga mode:
+Otomatis (ikut perangkat atau waktu lokal).
+Manual dengan status aktif/nonaktif.
+Tema langsung sinkron dengan preferensi user dan animasi transisi halus.
+Quick delete (×) button di setiap input field.
+Auto-focus input pada setiap langkah wizard.
+Auto-fill datetime berdasarkan waktu lokal saat ini.
+Auto layout responsiveness (viewport width dan safe area).
+Persistent step indicator dengan teks “Step x dari y”.
+
+🔧 Changed / Improved
+Input Wizard UX overhaul
+Tombol “Kembali” disembunyikan di step pertama.
+Tombol dinamis “Lanjutkan” / “Lewati” disesuaikan dengan konteks input (wajib atau opsional).
+Step terakhir kini hanya menampilkan tombol “Simpan” dan “Kembali”.
+Validation UX
+Nominal input otomatis mendeteksi karakter non-digit dan menampilkan pesan kesalahan langsung di bawah field.
+Field wajib hanya bisa lanjut jika valid.
+Toast feedback dan overlay success digabung: pengguna dapat memilih salah satu, dan durasi dapat disesuaikan.
+Setelah “Simpan”, wizard otomatis kembali ke step awal dan reset form.
+Dark/light theme system dimodularisasi dengan data-theme dan CSS variables.
+Bottom navigation sekarang full width, mengikuti tema aktif, dan tidak ikut scroll konten.
+Header bar diperluas selebar viewport (seperti bottom bar), dengan transisi dan opsi sticky untuk UX yang lebih konsisten.
+Padding konten disesuaikan agar tidak tertutup bottom nav.
+
+🩹 Fixed
+Bug di mana seluruh view tampil sekaligus (tab navigation tidak berfungsi).
+Issue di mana form tidak reset setelah penyimpanan.
+Layout header tidak sejajar dengan lebar viewport.
+Bottom navigation tidak mengikuti tema dark/light.
+Minor focus issue pada input field pertama di setiap step.
+Responsivitas layout pada layar kecil.
+
+📁 Structure / Code Maintenance
+JavaScript direstrukturisasi menjadi lebih modular (App.UI, App.state, App.actions).
+Komponen form, nav, dan setting dibuat terpisah logikanya agar mudah patching di versi berikut.
+Semua style kini menggunakan CSS variables untuk mendukung tema adaptif.
+Pembersihan kode dan komentar untuk maintainability jangka panjang.
+
+
 © 2025 QuickLog — Built with care and minimal dependencies.
