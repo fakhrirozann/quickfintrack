@@ -8,11 +8,14 @@
   <base href="./" />
   <link rel="stylesheet" href="style.css" />
   <link rel="manifest" href="manifest.json" />
-  <script>
-    if ('serviceWorker' in navigator) {
-      navigator.serviceWorker.register('./service-worker.js');
-    }
-  </script>
+<script>
+  if ('serviceWorker' in navigator) {
+    navigator.serviceWorker.register('./service-worker.js')
+      .then(() => console.log('✅ Service worker registered'))
+      .catch(err => console.log('⚠️ Service worker failed', err));
+  }
+</script>
+
 </head>
 
 <body>

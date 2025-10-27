@@ -1,0 +1,13 @@
+{
+  "name": "QuickLog",
+  "short_name": "QuickLog",
+  "start_url": "./index.html",
+  "display": "standalone",
+  "background_color": "#f8f9fb",
+  "theme_color": "#007aff",
+  "description": "Simple personal transaction logger.",
+  "lang": "id",
+  "start_url": "/quickfintrack/index.html",
+  "scope": "/quickfintrack/",
+  "orientation": "portrait"
+}
